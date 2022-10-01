@@ -122,4 +122,18 @@ contract XYKswapper is ReentrancyGuard {
             (amountInWithFee * reserveAmountOut + (newReserveIn >> 1)) /
             newReserveIn;
     }
+
+    function getAmountOut(
+        uint256 amountIn,
+        uint256 reserveAmountIn,
+        uint256 reserveAmountOut,
+        uint256 fee
+    ) external pure returns (uint256 amountOut) {
+        amountOut = _getAmountOut(
+            amountIn,
+            reserveAmountIn,
+            reserveAmountOut,
+            fee
+        );
+    }
 }

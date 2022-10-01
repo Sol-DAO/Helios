@@ -23,7 +23,10 @@ contract HeliosReferenceTest is ERC1155TokenReceiver, Test {
     uint256 id120;
     uint256 id020;
 
+    address deployer;
+
     function setUp() public {
+        deployer = tx.origin;
         helios = new HeliosReference();
         xykSwapperContract = new XYKswapper();
         xykSwapper = IHelios(address(xykSwapperContract));
@@ -31,7 +34,10 @@ contract HeliosReferenceTest is ERC1155TokenReceiver, Test {
         token0 = address(new MockERC20("Token0", "TKN0", 18));
         token1 = address(new MockERC20("Token1", "TKN1", 18));
         token2 = address(new MockERC20("Token2", "TKN2", 18));
-        require (token1>token0 && token0>token2, "tests assume addr(token1)>addr(token0)>addr(token2)");
+        require(
+            token1 > token0 && token0 > token2,
+            "tests assume addr(token1)>addr(token0)>addr(token2)"
+        );
 
         MockERC20(token0).mint(address(this), 1_000_000 ether);
         MockERC20(token1).mint(address(this), 1_000_000 ether);
@@ -187,7 +193,10 @@ contract HeliosReferenceTest is ERC1155TokenReceiver, Test {
     }
 
     function testXYKpairNoFeeInvariance(uint256 amountIn) public payable {
-        vm.assume(amountIn > 100000 && amountIn < MockERC20(token0).balanceOf(address(this)));
+        vm.assume(
+            amountIn > 100000 &&
+                amountIn < MockERC20(token0).balanceOf(address(this))
+        );
 
         uint256[] memory path = new uint256[](2);
         path[0] = id010;
@@ -253,4 +262,26 @@ contract HeliosReferenceTest is ERC1155TokenReceiver, Test {
             revert("token 2 balance is messed up");
         }
     }
+
+    function testArb() public {
+        uint256[] memory cycle = new uint256[](3);
+        cycle[0] = id01;
+        cycle[1] = id12;
+        cycle[2] = id02;
+        vm.prank(deployer);
+        helios.setArbToken(token0);
+        vm.prank(deployer);
+        helios.addOpportunity(cycle);
+        (cycle[0], cycle[2]) = (cycle[2], cycle[0]);
+        vm.prank(deployer);
+        helios.addOpportunity(cycle);
+        vm.prank(deployer);
+        helios.setArbBeneficiary(deployer);
+        uint256 b0 = MockERC20(token0).balanceOf(deployer);
+        uint256 amountIn = 1_000 ether;
+        helios.swap(address(this), id01, token0, amountIn);
+        uint256 a0 = MockERC20(token0).balanceOf(deployer);
+        require(a0 > b0 + 246 ether, "too little arbed");
+        require(a0 < b0 + 247 ether, "too much arbed");
+     }
 }
