@@ -51,129 +51,21 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
         MockERC20(token1).approve(address(heliosRef), 1_000_000_0 ether);
         MockERC20(token2).approve(address(heliosRef), 1_000_000_0 ether);
 
-        (id01, ) = helios.createPair(
-            address(this),
-            token0,
-            token1,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            30,
-            ""
-        );
-        (id12, ) = helios.createPair(
-            address(this),
-            token1,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            30,
-            ""
-        );
-        (id02, ) = helios.createPair(
-            address(this),
-            token0,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            30,
-            ""
-        );
+        (id01, ) = helios.createPair(address(this), token0, token1, 1_000 ether, 1_000 ether, xykSwapper, 30, "");
+        (id12, ) = helios.createPair(address(this), token1, token2, 1_000 ether, 1_000 ether, xykSwapper, 30, "");
+        (id02, ) = helios.createPair(address(this), token0, token2, 1_000 ether, 1_000 ether, xykSwapper, 30, "");
 
-        (id010, ) = helios.createPair(
-            address(this),
-            token0,
-            token1,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            0,
-            ""
-        );
-        (id120, ) = helios.createPair(
-            address(this),
-            token1,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            0,
-            ""
-        );
-        (id020, ) = helios.createPair(
-            address(this),
-            token0,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            0,
-            ""
-        );
+        (id010, ) = helios.createPair(address(this), token0, token1, 1_000 ether, 1_000 ether, xykSwapper, 0, "");
+        (id120, ) = helios.createPair(address(this), token1, token2, 1_000 ether, 1_000 ether, xykSwapper, 0, "");
+        (id020, ) = helios.createPair(address(this), token0, token2, 1_000 ether, 1_000 ether, xykSwapper, 0, "");
 
-        heliosRef.createPair(
-            address(this),
-            token0,
-            token1,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            30,
-            ""
-        );
-        heliosRef.createPair(
-            address(this),
-            token1,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            30,
-            ""
-        );
-        heliosRef.createPair(
-            address(this),
-            token0,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            30,
-            ""
-        );
+        heliosRef.createPair(address(this), token0, token1, 1_000 ether, 1_000 ether, xykSwapper, 30, "");
+        heliosRef.createPair(address(this), token1, token2, 1_000 ether, 1_000 ether, xykSwapper, 30, "");
+        heliosRef.createPair(address(this), token0, token2, 1_000 ether, 1_000 ether, xykSwapper, 30, "");
 
-        heliosRef.createPair(
-            address(this),
-            token0,
-            token1,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            0,
-            ""
-        );
-        heliosRef.createPair(
-            address(this),
-            token1,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            0,
-            ""
-        );
-        heliosRef.createPair(
-            address(this),
-            token0,
-            token2,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            0,
-            ""
-        );
+        heliosRef.createPair(address(this), token0, token1, 1_000 ether, 1_000 ether, xykSwapper, 0, "");
+        heliosRef.createPair(address(this), token1, token2, 1_000 ether, 1_000 ether, xykSwapper, 0, "");
+        heliosRef.createPair(address(this), token0, token2, 1_000 ether, 1_000 ether, xykSwapper, 0, "");
     }
 
     function testHeliosCreation() public payable {
@@ -181,16 +73,7 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
     }
 
     function testXYKpairCreation() public payable {
-        helios.createPair(
-            address(this),
-            token0,
-            token1,
-            1_000 ether,
-            1_000 ether,
-            xykSwapper,
-            1,
-            ""
-        );
+        helios.createPair(address(this), token0, token1, 1_000 ether, 1_000 ether, xykSwapper, 1, "");
     }
 
     function testXYKpairSwap(uint256 amountIn) public payable {
@@ -260,39 +143,19 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
     }
 
     function testXYKpairNoFeeInvariance(uint256 amountIn) public payable {
-        vm.assume(
-            amountIn > 100000 &&
-                amountIn < MockERC20(token0).balanceOf(address(this))
-        );
+        vm.assume(amountIn > 100000 && amountIn < MockERC20(token0).balanceOf(address(this)));
 
         uint256[] memory path = new uint256[](2);
         path[0] = id010;
         path[1] = id120;
 
         // First we do a round trip to snap amountIn to a nearby quantity that will be invariant to round trips.
-        uint256 amountOutFwd = helios.swap(
-            address(this),
-            path,
-            token0,
-            amountIn
-        );
-        uint256 amountOutBack = helios.swap(
-            address(this),
-            id120,
-            token2,
-            amountOutFwd
-        );
+        uint256 amountOutFwd = helios.swap(address(this), path, token0, amountIn);
+        uint256 amountOutBack = helios.swap(address(this), id120, token2, amountOutFwd);
 
-        amountOutBack = helios.swap(
-            address(this),
-            id010,
-            token1,
-            amountOutBack
-        );
+        amountOutBack = helios.swap(address(this), id010, token1, amountOutBack);
 
-        uint256 diff = amountIn > amountOutBack
-            ? amountIn - amountOutBack
-            : amountOutBack - amountIn;
+        uint256 diff = amountIn > amountOutBack ? amountIn - amountOutBack : amountOutBack - amountIn;
 
         if (diff > 512) {
             revert("more than 512 wei difference from round tripping");
@@ -307,17 +170,10 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
 
         amountOutFwd = helios.swap(address(this), path, token0, amountIn);
         amountOutBack = helios.swap(address(this), id120, token2, amountOutFwd);
-        amountOutBack = helios.swap(
-            address(this),
-            id010,
-            token1,
-            amountOutBack
-        );
+        amountOutBack = helios.swap(address(this), id010, token1, amountOutBack);
 
         if (amountIn != amountOutBack) {
-            revert(
-                "round tripping with 0 fee does not give back original amount"
-            );
+            revert("round tripping with 0 fee does not give back original amount");
         }
         if (b0 != MockERC20(token0).balanceOf(address(this))) {
             revert("token 0 balance is messed up");
@@ -336,18 +192,8 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
 
         uint256 amountOut1 = helios.swap(address(this), id01, token0, amountIn);
         uint256 amountOut2 = helios.swap(address(this), id01, token0, amountIn);
-        uint256 amountOutRef1 = heliosRef.swap(
-            address(this),
-            id01,
-            token0,
-            amountIn
-        );
-        uint256 amountOutRef2 = heliosRef.swap(
-            address(this),
-            id01,
-            token0,
-            amountIn
-        );
+        uint256 amountOutRef1 = heliosRef.swap(address(this), id01, token0, amountIn);
+        uint256 amountOutRef2 = heliosRef.swap(address(this), id01, token0, amountIn);
 
         require(amountOut1 == amountOutRef1, "amountOut1 does not match");
         require(amountOut2 == amountOutRef2, "amountOut2 does not match");

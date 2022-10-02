@@ -11,12 +11,7 @@ import {ERC1155, ERC1155TokenReceiver} from "@solbase/tokens/ERC1155.sol";
 /// @notice ERC1155 vault with router and liquidity pools.
 /// @dev Reference implementation (emphasizes clarity, deemphasizes gas cost)
 /// @author z0r0z.eth (SolDAO)
-contract HeliosReference is
-    OwnedThreeStep(tx.origin),
-    SafeMulticallable,
-    ERC1155,
-    ERC1155TokenReceiver
-{
+contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC1155, ERC1155TokenReceiver {
     constructor() payable {} // Clean deployment.
 
     /// -----------------------------------------------------------------------
@@ -30,34 +25,13 @@ contract HeliosReference is
     /// Events
     /// -----------------------------------------------------------------------
 
-    event CreatePair(
-        address indexed to,
-        uint256 id,
-        address indexed token0,
-        address indexed token1
-    );
+    event CreatePair(address indexed to, uint256 id, address indexed token0, address indexed token1);
 
-    event AddLiquidity(
-        address indexed to,
-        uint256 id,
-        uint256 token0amount,
-        uint256 token1amount
-    );
+    event AddLiquidity(address indexed to, uint256 id, uint256 token0amount, uint256 token1amount);
 
-    event RemoveLiquidity(
-        address indexed from,
-        uint256 id,
-        uint256 amount0out,
-        uint256 amount1out
-    );
+    event RemoveLiquidity(address indexed from, uint256 id, uint256 amount0out, uint256 amount1out);
 
-    event Swap(
-        address indexed to,
-        uint256 id,
-        address indexed tokenIn,
-        uint256 amountIn,
-        uint256 amountOut
-    );
+    event Swap(address indexed to, uint256 id, address indexed tokenIn, uint256 amountIn, uint256 amountOut);
 
     event SetURIfetcher(ERC1155 indexed uriFetcher);
 
@@ -103,8 +77,7 @@ contract HeliosReference is
     mapping(uint256 => Pair) public pairs;
 
     /// @dev Internal mapping to check Helios LP settings.
-    mapping(address => mapping(address => mapping(IHelios => mapping(uint256 => uint256))))
-        internal pairSettings;
+    mapping(address => mapping(address => mapping(IHelios => mapping(uint256 => uint256)))) internal pairSettings;
 
     struct Pair {
         address token0; // First pair token.
@@ -157,27 +130,14 @@ contract HeliosReference is
 
         require(address(swapper).code.length != 0, "Helios: INVALID_SWAPPER");
 
-        uint112 token0amount; 
-        uint112 token1amount; 
+        uint112 token0amount;
+        uint112 token1amount;
         // Sort tokens and amounts.
-        (
-            tokenA,
-            token0amount,
-            tokenB,
-            token1amount
-        ) = tokenA < tokenB
-                ? (tokenA, uint112(tokenAamount), tokenB, uint112(tokenBamount))
-                : (
-                    tokenB,
-                    uint112(tokenBamount),
-                    tokenA,
-                    uint112(tokenAamount)
-                );
+        (tokenA, token0amount, tokenB, token1amount) = tokenA < tokenB
+            ? (tokenA, uint112(tokenAamount), tokenB, uint112(tokenBamount))
+            : (tokenB, uint112(tokenBamount), tokenA, uint112(tokenAamount));
 
-        require(
-            pairSettings[tokenA][tokenB][swapper][fee] == 0,
-            "Helios: PAIR_EXISTS"
-        );
+        require(pairSettings[tokenA][tokenB][swapper][fee] == 0, "Helios: PAIR_EXISTS");
 
         // If null included or `msg.value`, assume native token pairing.
         if (address(tokenA) == address(0) || msg.value != 0) {
@@ -245,23 +205,11 @@ contract HeliosReference is
         if (pair.token0 == address(0)) {
             token0amount = msg.value;
 
-            pair.token1.safeTransferFrom(
-                msg.sender,
-                address(this),
-                token1amount
-            );
+            pair.token1.safeTransferFrom(msg.sender, address(this), token1amount);
         } else {
-            pair.token0.safeTransferFrom(
-                msg.sender,
-                address(this),
-                token0amount
-            );
+            pair.token0.safeTransferFrom(msg.sender, address(this), token0amount);
 
-            pair.token1.safeTransferFrom(
-                msg.sender,
-                address(this),
-                token1amount
-            );
+            pair.token1.safeTransferFrom(msg.sender, address(this), token1amount);
         }
 
         // Swapper dictates output LP.
@@ -341,10 +289,7 @@ contract HeliosReference is
 
         Pair storage pair = pairs[id];
 
-        require(
-            tokenIn == pair.token0 || tokenIn == pair.token1,
-            "Helios: NOT_PAIR_TOKEN"
-        );
+        require(tokenIn == pair.token0 || tokenIn == pair.token1, "Helios: NOT_PAIR_TOKEN");
 
         // If `tokenIn` is address(0), assume native token.
         if (tokenIn == address(0)) {
@@ -395,10 +340,7 @@ contract HeliosReference is
 
         Pair storage pair = pairs[id];
 
-        require(
-            tokenIn == pair.token0 || tokenIn == pair.token1,
-            "Helios: NOT_PAIR_TOKEN"
-        );
+        require(tokenIn == pair.token0 || tokenIn == pair.token1, "Helios: NOT_PAIR_TOKEN");
 
         // Swapper dictates output amount.
         amountOut = pair.swapper.swap(id, address(tokenIn), amountIn);
@@ -446,12 +388,7 @@ contract HeliosReference is
         address tokenOut = tokenIn;
 
         for (uint256 i; i < len; ) {
-            (tokenOut, amountOut) = _updateReserves(
-                to,
-                ids[i],
-                tokenOut,
-                amountOut
-            );
+            (tokenOut, amountOut) = _updateReserves(to, ids[i], tokenOut, amountOut);
 
             // Unchecked because the only math done is incrementing
             // the array index counter which cannot possibly overflow.
@@ -505,10 +442,7 @@ contract HeliosReference is
             address token0 = pair.token0;
             address token1 = pair.token1;
 
-            require(
-                currentToken == token0 || currentToken == token1,
-                "Helios: NOT_PAIR_TOKEN"
-            );
+            require(currentToken == token0 || currentToken == token1, "Helios: NOT_PAIR_TOKEN");
 
             currentToken = (currentToken == token1) ? token0 : token1;
         }
@@ -531,10 +465,9 @@ contract HeliosReference is
         if (opportunity.length == 0) return 0;
         (uint256 bestArbAmount, uint256 bestProfit) = _optimizeArb(0);
         uint256 bestOpportunity = 0;
-        for (uint256 i = 1; i < opportunity.length;) {
+        for (uint256 i = 1; i < opportunity.length; ) {
             (uint256 arbAmount, uint256 profit) = _optimizeArb(i);
-            if (profit > bestProfit)
-            {
+            if (profit > bestProfit) {
                 bestProfit = profit;
                 bestArbAmount = arbAmount;
                 bestOpportunity = i;
@@ -597,11 +530,7 @@ contract HeliosReference is
     /// @param cycleId Index of cycle in the opportunity array.
     /// @return amountArb The amount to arb to maximize profit
     /// @return profit The estimated profit
-    function _optimizeArb(uint256 cycleId)
-        internal
-        view
-        returns (uint256, uint256)
-    {
+    function _optimizeArb(uint256 cycleId) internal view returns (uint256, uint256) {
         uint256[] memory cycle = opportunity[cycleId];
         Pair storage pair = pairs[cycle[0]];
         address tokenOut = pair.token1;
@@ -626,10 +555,9 @@ contract HeliosReference is
                 ++i;
             }
         }
-        if (K > M){
+        if (K > M) {
             uint256 amountArb = (K * M).sqrt() - M;
-            if (K - M > (amountArb << 1))
-                return (amountArb, K - M  - (amountArb << 1));
+            if (K - M > (amountArb << 1)) return (amountArb, K - M - (amountArb << 1));
         }
         return (0, 0);
     }
@@ -686,10 +614,7 @@ contract HeliosReference is
     /// @param cycleId The index of the cycle in the opportunity array
     /// @param amountIn The amount of arbToken to arb
     /// @return amountOut The profit amount
-    function executeArb(uint256 cycleId, uint256 amountIn)
-        public
-        returns (uint256 amountOut)
-    {
+    function executeArb(uint256 cycleId, uint256 amountIn) public returns (uint256 amountOut) {
         // Function is external to allow low-level call() (or try/catch)
         // However we need to prevent calls from outside this contract
         // since all checks have been moved to addOpportunity
@@ -700,12 +625,7 @@ contract HeliosReference is
         uint256 initialAmountIn = amountIn;
         uint256 len = cycle.length;
         for (uint256 i; i < len; ) {
-            (currentToken, amountOut) = _updateReserves(
-                beneficiary,
-                cycle[i],
-                currentToken,
-                amountOut
-            );
+            (currentToken, amountOut) = _updateReserves(beneficiary, cycle[i], currentToken, amountOut);
 
             unchecked {
                 ++i;
@@ -732,8 +652,6 @@ contract HeliosReference is
 
         uint256 newReserveIn = reserveAmountIn * 10000 + amountInWithFee;
 
-        amountOut =
-            (amountInWithFee * reserveAmountOut + (newReserveIn >> 1)) /
-            newReserveIn;
+        amountOut = (amountInWithFee * reserveAmountOut + (newReserveIn >> 1)) / newReserveIn;
     }
 }

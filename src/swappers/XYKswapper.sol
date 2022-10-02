@@ -50,10 +50,7 @@ contract XYKswapper is ReentrancyGuard {
         if (totalSupply == 0) {
             liq = (token0amount * token1amount).sqrt() - MIN_LP;
         } else {
-            liq = min(
-                (token0amount * totalSupply) / reserve0,
-                (token1amount * totalSupply) / reserve1
-            );
+            liq = min((token0amount * totalSupply) / reserve0, (token1amount * totalSupply) / reserve1);
         }
 
         require(liq != 0, "XYKswapper: INSUFFICIENT_LIQUIDITY_MINTED");
@@ -76,10 +73,7 @@ contract XYKswapper is ReentrancyGuard {
 
         amount1out = (lp * reserve1) / totalSupply;
 
-        require(
-            amount0out != 0 && amount1out != 0,
-            "XYKswapper: INSUFFICIENT_LIQUIDITY_BURNED"
-        );
+        require(amount0out != 0 && amount1out != 0, "XYKswapper: INSUFFICIENT_LIQUIDITY_BURNED");
     }
 
     /// -----------------------------------------------------------------------
@@ -118,9 +112,7 @@ contract XYKswapper is ReentrancyGuard {
 
         uint256 newReserveIn = reserveAmountIn * 10000 + amountInWithFee;
 
-        amountOut =
-            (amountInWithFee * reserveAmountOut + (newReserveIn >> 1)) /
-            newReserveIn;
+        amountOut = (amountInWithFee * reserveAmountOut + (newReserveIn >> 1)) / newReserveIn;
     }
 
     function getAmountOut(
@@ -129,11 +121,6 @@ contract XYKswapper is ReentrancyGuard {
         uint256 reserveAmountOut,
         uint256 fee
     ) external pure returns (uint256 amountOut) {
-        amountOut = _getAmountOut(
-            amountIn,
-            reserveAmountIn,
-            reserveAmountOut,
-            fee
-        );
+        amountOut = _getAmountOut(amountIn, reserveAmountIn, reserveAmountOut, fee);
     }
 }
