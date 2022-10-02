@@ -4,10 +4,12 @@ pragma solidity ^0.8.4;
 import {IHelios} from "./interfaces/IHelios.sol";
 import {OwnedThreeStep} from "@solbase/auth/OwnedThreeStep.sol";
 import {SafeTransferLib} from "@solbase/utils/SafeTransferLib.sol";
+import {FixedPointMathLib} from "@solbase/utils/FixedPointMathLib.sol";
 import {SafeMulticallable} from "@solbase/utils/SafeMulticallable.sol";
 import {ERC1155, ERC1155TokenReceiver} from "@solbase/tokens/ERC1155.sol";
 
 /// @notice ERC1155 vault with router and liquidity pools.
+/// @dev Reference implementation (emphasizes clarity, deemphasizes gas cost)
 /// @author z0r0z.eth (SolDAO)
 contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC1155, ERC1155TokenReceiver {
     constructor() payable {} // Clean deployment.
@@ -17,6 +19,7 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
     /// -----------------------------------------------------------------------
 
     using SafeTransferLib for address;
+    using FixedPointMathLib for uint256;
 
     /// -----------------------------------------------------------------------
     /// Events
@@ -31,6 +34,14 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
     event Swap(address indexed to, uint256 id, address indexed tokenIn, uint256 amountIn, uint256 amountOut);
 
     event SetURIfetcher(ERC1155 indexed uriFetcher);
+
+    event AddOpportunity(uint256 id, uint256[] opportunity);
+
+    event ClearOpportunities();
+
+    event SetArbToken(address indexed token);
+
+    event SetArbBeneficiary(address indexed recipient);
 
     /// -----------------------------------------------------------------------
     /// Metadata/URI Logic
@@ -78,6 +89,19 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
     }
 
     /// -----------------------------------------------------------------------
+    /// Arb Storage
+    /// -----------------------------------------------------------------------
+
+    /// @dev Token that will be used for profits
+    address arbToken;
+
+    /// @dev Account where arb profits will be deposited
+    address beneficiary;
+
+    /// @dev List of arbitrage opportunities
+    uint256[][] opportunity;
+
+    /// -----------------------------------------------------------------------
     /// LP Logic
     /// -----------------------------------------------------------------------
 
@@ -106,26 +130,28 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
 
         require(address(swapper).code.length != 0, "Helios: INVALID_SWAPPER");
 
+        uint112 token0amount;
+        uint112 token1amount;
         // Sort tokens and amounts.
-        (address token0, uint112 token0amount, address token1, uint112 token1amount) = tokenA < tokenB
+        (tokenA, token0amount, tokenB, token1amount) = tokenA < tokenB
             ? (tokenA, uint112(tokenAamount), tokenB, uint112(tokenBamount))
             : (tokenB, uint112(tokenBamount), tokenA, uint112(tokenAamount));
 
-        require(pairSettings[token0][token1][swapper][fee] == 0, "Helios: PAIR_EXISTS");
+        require(pairSettings[tokenA][tokenB][swapper][fee] == 0, "Helios: PAIR_EXISTS");
 
         // If null included or `msg.value`, assume native token pairing.
-        if (address(token0) == address(0) || msg.value != 0) {
+        if (address(tokenA) == address(0) || msg.value != 0) {
             // Overwrite token0 with null if not so.
-            if (token0 != address(0)) token0 = address(0);
+            if (tokenA != address(0)) tokenA = address(0);
 
             // Overwrite token0amount with value.
             token0amount = uint112(msg.value);
 
-            token1.safeTransferFrom(msg.sender, address(this), token1amount);
+            tokenB.safeTransferFrom(msg.sender, address(this), token1amount);
         } else {
-            token0.safeTransferFrom(msg.sender, address(this), token0amount);
+            tokenA.safeTransferFrom(msg.sender, address(this), token0amount);
 
-            token1.safeTransferFrom(msg.sender, address(this), token1amount);
+            tokenB.safeTransferFrom(msg.sender, address(this), token1amount);
         }
 
         // Unchecked because the only math done is incrementing
@@ -134,11 +160,11 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
             id = ++totalSupply;
         }
 
-        pairSettings[token0][token1][swapper][fee] = id;
+        pairSettings[tokenA][tokenB][swapper][fee] = id;
 
         pairs[id] = Pair({
-            token0: token0,
-            token1: token1,
+            token0: tokenA,
+            token1: tokenB,
             swapper: swapper,
             reserve0: token0amount,
             reserve1: token1amount,
@@ -152,7 +178,7 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
 
         totalSupplyForId[id] = liq;
 
-        emit CreatePair(to, id, token0, token1);
+        emit CreatePair(to, id, tokenA, tokenB);
 
         emit AddLiquidity(to, id, token0amount, token1amount);
     }
@@ -294,6 +320,7 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
         }
 
         emit Swap(to, id, tokenIn, amountIn, amountOut);
+        _arb();
     }
 
     /// @notice Update reserves of Helios LP.
@@ -375,5 +402,234 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
         } else {
             tokenOut.safeTransfer(to, amountOut);
         }
+        _arb();
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Arbitrage logic
+    /// -----------------------------------------------------------------------
+
+    /// @notice Set the arbitrage token.
+    /// @param token Profits will be taken / denominated in this token.
+    function setArbToken(address token) external onlyOwner {
+        require(opportunity.length == 0, "Helios: NONEMPTY_OPPORTUNITIES");
+        arbToken = token;
+        emit SetArbToken(token);
+    }
+
+    /// @notice Set the account which will collect all arbitrage profits.
+    /// @param recipient Profits will be transferred to this address.
+    function setArbBeneficiary(address recipient) external onlyOwner {
+        beneficiary = recipient;
+        emit SetArbBeneficiary(recipient);
+    }
+
+    /// @notice Add an arbitrage cycle into consideration.
+    /// @param cycle Array of Helios LP ids in 1155 tracking.
+    function addOpportunity(uint256[] calldata cycle) public onlyOwner {
+        uint256 opp = opportunity.length;
+        address currentToken = arbToken;
+        uint256 len = cycle.length;
+
+        require(len > 0, "Helios: NOT_CYCLE");
+
+        for (uint256 i = 0; i < len; ++i) {
+            uint256 id = cycle[i];
+
+            require(id <= totalSupply, "Helios: PAIR_DOESNT_EXIST");
+
+            Pair storage pair = pairs[id];
+            address token0 = pair.token0;
+            address token1 = pair.token1;
+
+            require(currentToken == token0 || currentToken == token1, "Helios: NOT_PAIR_TOKEN");
+
+            currentToken = (currentToken == token1) ? token0 : token1;
+        }
+        require(currentToken == arbToken, "Helios: NOT_CYCLE");
+
+        opportunity.push(cycle);
+
+        emit AddOpportunity(opp, cycle);
+    }
+
+    /// @notice Remove all arbitrage cycles from consideration.
+    function clearOpportunities() public onlyOwner {
+        delete opportunity;
+        emit ClearOpportunities();
+    }
+
+    /// @notice Calculate and execute arbitrage if necessary.
+    /// @return the amount of profit from the arbitrage.
+    function _arb() internal returns (uint256) {
+        if (opportunity.length == 0) return 0;
+        (uint256 bestArbAmount, uint256 bestProfit) = _optimizeArb(0);
+        uint256 bestOpportunity = 0;
+        for (uint256 i = 1; i < opportunity.length; ) {
+            (uint256 arbAmount, uint256 profit) = _optimizeArb(i);
+            if (profit > bestProfit) {
+                bestProfit = profit;
+                bestArbAmount = arbAmount;
+                bestOpportunity = i;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+        if (bestProfit == 0) return 0;
+        (bool success, bytes memory result) = address(this).call(
+            abi.encodeCall(this.executeArb, (bestOpportunity, bestArbAmount))
+        );
+        return success ? abi.decode(result, (uint256)) : 0;
+    }
+
+    /// @notice Updates K, M according to the arb recurrence (cf. whitepaper)
+    /// @param id The Helios LP id in 1155 tracking
+    /// @param tokenIn The asset to swap from
+    /// @param K The K value
+    /// @param M The M value
+    /// @return tokenOut The asset to swap to
+    /// @return Knew new value of K
+    /// @return Mnew new value of M
+    function _updateRecurrence( uint256 id, address tokenIn, uint256 K, uint256 M) internal view returns ( address tokenOut, uint256 Knew, uint256 Mnew) {
+        Pair storage pair = pairs[id];
+        address token0 = pair.token0;
+        address token1 = pair.token1;
+
+        uint256 reserveIn;
+        uint256 reserveOut;
+        if (tokenIn == token1) {
+            tokenOut = token0;
+            reserveIn = pair.reserve1;
+            reserveOut = pair.reserve0;
+        } else {
+            tokenOut = token1;
+            reserveIn = pair.reserve0;
+            reserveOut = pair.reserve1;
+        }
+        uint256 fee = pair.fee;
+        Mnew = M - pair.swapper.getAmountOut(K, reserveIn, M, fee);
+        Knew = pair.swapper.getAmountOut(K, reserveIn, reserveOut, fee);
+    }
+
+    /// @notice calculate the amount to arb for a given opportunity
+    /// @notice All checks done earlier in addOpportunity; no checks here.
+    /// @param cycleId Index of cycle in the opportunity array.
+    /// @return amountArb The amount to arb to maximize profit
+    /// @return profit The estimated profit
+    function _optimizeArb(uint256 cycleId) internal view returns (uint256, uint256) {
+        uint256[] memory cycle = opportunity[cycleId];
+        Pair storage pair = pairs[cycle[0]];
+        address tokenOut = pair.token1;
+        uint256 K;
+        uint256 M;
+        if (arbToken == tokenOut) {
+            //tokenIn = token1 reserveIn=reserve1
+            tokenOut = pair.token0;
+            K = pair.reserve0;
+            M = pair.reserve1;
+        } else {
+            //tokenIn = token0 reserveIn=reserve0
+            K = pair.reserve1;
+            M = pair.reserve0;
+        }
+        M = (10000 * M) / (10000 - pair.fee);
+
+        uint256 len = cycle.length;
+        for (uint256 i = 1; i < len; ) {
+            (tokenOut, K, M) = _updateRecurrence(cycle[i], tokenOut, K, M);
+            unchecked {
+                ++i;
+            }
+        }
+        if (K > M) {
+            uint256 amountArb = (K * M).sqrt() - M;
+            if (K - M > (amountArb << 1)) return (amountArb, K - M - (amountArb << 1));
+        }
+        return (0, 0);
+    }
+
+    /// @notice Update reserves of Helios LP along an arbitrage cycle.
+    /// @notice All checks done earlier in addOpportunity; no checks here.
+    /// @param to The recipient, only used for logging events
+    /// @param cycleId The index of the cycle in the opportunity array
+    /// @param amountIn The amount of arbToken to swap
+    /// @return amountOut The amount of arbToken to receive
+    function _updateReservesUnchecked( address to, uint256 cycleId, uint256 amountIn) internal returns (uint256 amountOut) {
+        uint256[] memory ids = opportunity[cycleId];
+        address currentToken = arbToken;
+        uint256 len = ids.length;
+        for (uint256 i; i < len; ) {
+            uint256 id = ids[i];
+            Pair storage pair = pairs[id];
+
+            // Swapper dictates output amount.
+            amountOut = pair.swapper.swap(id, address(currentToken), amountIn);
+
+            emit Swap(to, id, currentToken, amountIn, amountOut);
+
+            if (currentToken == pair.token1) {
+                currentToken = pair.token0;
+
+                pair.reserve0 -= uint112(amountOut);
+
+                pair.reserve1 += uint112(amountIn);
+            } else {
+                currentToken = pair.token1;
+
+                pair.reserve0 += uint112(amountIn);
+
+                pair.reserve1 -= uint112(amountOut);
+            }
+
+            amountIn = amountOut;
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /// @notice Execute an arb trade along the given arb cycle.
+    /// @dev All checks done earlier in addOpportunity; no checks here.
+    /// @dev This function should be low-level call'ed.
+    /// @dev It may revert but caller changes (swap) should persist.
+    /// @param cycleId The index of the cycle in the opportunity array
+    /// @param amountIn The amount of arbToken to arb
+    /// @return amountOut The profit amount
+    function executeArb(uint256 cycleId, uint256 amountIn) public returns (uint256 amountOut) {
+        // Function is external to allow low-level call() (or try/catch)
+        // However we need to prevent calls from outside this contract
+        // since all checks have been moved to addOpportunity
+        require(msg.sender == address(this));
+        amountOut = amountIn;
+        uint256[] memory cycle = opportunity[cycleId];
+        address currentToken = arbToken;
+        uint256 initialAmountIn = amountIn;
+        uint256 len = cycle.length;
+        for (uint256 i; i < len; ) {
+            (currentToken, amountOut) = _updateReserves(beneficiary, cycle[i], currentToken, amountOut);
+
+            unchecked {
+                ++i;
+            }
+        }
+        // Optimal arb was derived using real numbers.
+        // Still a small chance that rounding can lead to amountOut <= initialAmountIn
+        require(amountOut > initialAmountIn, "Helios: ARB_FAILED");
+        amountOut -= initialAmountIn;
+        if (address(arbToken) == address(0)) {
+            beneficiary.safeTransferETH(amountOut);
+        } else {
+            arbToken.safeTransfer(beneficiary, amountOut);
+        }
+    }
+
+    function _getAmountOut( uint256 amountIn, uint256 reserveAmountIn, uint256 reserveAmountOut, uint256 fee) internal pure returns (uint256 amountOut) {
+        uint256 amountInWithFee = amountIn * (10000 - fee);
+
+        uint256 newReserveIn = reserveAmountIn * 10000 + amountInWithFee;
+
+        amountOut = (amountInWithFee * reserveAmountOut + (newReserveIn >> 1)) / newReserveIn;
     }
 }

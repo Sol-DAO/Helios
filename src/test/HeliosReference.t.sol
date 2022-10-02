@@ -23,7 +23,10 @@ contract HeliosReferenceTest is ERC1155TokenReceiver, Test {
     uint256 id120;
     uint256 id020;
 
+    address deployer;
+
     function setUp() public {
+        deployer = tx.origin;
         helios = new HeliosReference();
         xykSwapperContract = new XYKswapper();
         xykSwapper = IHelios(address(xykSwapperContract));
@@ -165,5 +168,27 @@ contract HeliosReferenceTest is ERC1155TokenReceiver, Test {
         if (b2 != MockERC20(token2).balanceOf(address(this))) {
             revert("token 2 balance is messed up");
         }
+    }
+
+    function testArb() public {
+        uint256[] memory cycle = new uint256[](3);
+        cycle[0] = id01;
+        cycle[1] = id12;
+        cycle[2] = id02;
+        vm.prank(deployer);
+        helios.setArbToken(token0);
+        vm.prank(deployer);
+        helios.addOpportunity(cycle);
+        (cycle[0], cycle[2]) = (cycle[2], cycle[0]);
+        vm.prank(deployer);
+        helios.addOpportunity(cycle);
+        vm.prank(deployer);
+        helios.setArbBeneficiary(deployer);
+        uint256 b0 = MockERC20(token0).balanceOf(deployer);
+        uint256 amountIn = 1_000 ether;
+        helios.swap(address(this), id01, token0, amountIn);
+        uint256 a0 = MockERC20(token0).balanceOf(deployer);
+        require(a0 > b0 + 246 ether, "too little arbed");
+        require(a0 < b0 + 247 ether, "too much arbed");
     }
 }

@@ -29,4 +29,11 @@ interface IHelios {
         address tokenIn,
         uint256 amountIn
     ) external returns (uint256 amountOut);
+
+    function getAmountOut(
+        uint256 amountIn,
+        uint256 reserveAmountIn,
+        uint256 reserveAmountOut,
+        uint256 fee
+    ) external pure returns (uint256);
 }

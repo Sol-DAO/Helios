@@ -25,7 +25,10 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
     uint256 id120;
     uint256 id020;
 
+    address deployer;
+
     function setUp() public {
+        deployer = tx.origin;
         helios = new Helios();
         xykSwapperContract = new XYKswapper();
         xykSwapper = IHelios(address(xykSwapperContract));
@@ -194,5 +197,35 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
 
         require(amountOut1 == amountOutRef1, "amountOut1 does not match");
         require(amountOut2 == amountOutRef2, "amountOut2 does not match");
+    }
+
+    function testDiffArb(uint256 amountIn) public payable {
+        uint256[] memory cycle = new uint256[](3);
+        cycle[0] = id01;
+        cycle[1] = id12;
+        cycle[2] = id02;
+        vm.startPrank(deployer);
+        helios.setArbToken(token0);
+        heliosRef.setArbToken(token0);
+        helios.addOpportunity(cycle);
+        heliosRef.addOpportunity(cycle);
+        (cycle[0], cycle[2]) = (cycle[2], cycle[0]);
+        helios.addOpportunity(cycle);
+        heliosRef.addOpportunity(cycle);
+        helios.setArbBeneficiary(deployer);
+        heliosRef.setArbBeneficiary(deployer);
+        vm.stopPrank();
+
+        uint256 b0 = MockERC20(token0).balanceOf(address(this));
+        vm.assume(amountIn > 200 ether && amountIn < b0 / 2);
+
+        uint256 c0 = MockERC20(token0).balanceOf(deployer);
+        uint256 amountOut = helios.swap(address(this), id01, token0, amountIn);
+        uint256 d0 = MockERC20(token0).balanceOf(deployer);
+        uint256 amountOutRef = heliosRef.swap(address(this), id01, token0, amountIn);
+        uint256 e0 = MockERC20(token0).balanceOf(deployer);
+
+        require(amountOut == amountOutRef, "amountOut does not match");
+        require(d0 - c0 == e0 - d0, "arb profit does not match");
     }
 }
