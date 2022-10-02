@@ -498,7 +498,20 @@ contract Helios is OwnedThreeStep(tx.origin), SafeMulticallable, ERC1155, ERC115
     /// @return tokenOut The asset to swap to
     /// @return Knew new value of K
     /// @return Mnew new value of M
-    function _updateRecurrence( uint256 id, address tokenIn, uint256 K, uint256 M) internal view returns ( address tokenOut, uint256 Knew, uint256 Mnew) {
+    function _updateRecurrence(
+        uint256 id,
+        address tokenIn,
+        uint256 K,
+        uint256 M
+    )
+        internal
+        view
+        returns (
+            address tokenOut,
+            uint256 Knew,
+            uint256 Mnew
+        )
+    {
         Pair storage pair = pairs[id];
         address token0 = pair.token0;
         address token1 = pair.token1;
@@ -562,7 +575,11 @@ contract Helios is OwnedThreeStep(tx.origin), SafeMulticallable, ERC1155, ERC115
     /// @param cycleId The index of the cycle in the opportunity array
     /// @param amountIn The amount of arbToken to swap
     /// @return amountOut The amount of arbToken to receive
-    function _updateReservesUnchecked( address to, uint256 cycleId, uint256 amountIn) internal returns (uint256 amountOut) {
+    function _updateReservesUnchecked(
+        address to,
+        uint256 cycleId,
+        uint256 amountIn
+    ) internal returns (uint256 amountOut) {
         uint256[] memory ids = opportunity[cycleId];
         address currentToken = arbToken;
         uint256 len = ids.length;
@@ -632,7 +649,12 @@ contract Helios is OwnedThreeStep(tx.origin), SafeMulticallable, ERC1155, ERC115
         }
     }
 
-    function _getAmountOut( uint256 amountIn, uint256 reserveAmountIn, uint256 reserveAmountOut, uint256 fee) internal pure returns (uint256 amountOut) {
+    function _getAmountOut(
+        uint256 amountIn,
+        uint256 reserveAmountIn,
+        uint256 reserveAmountOut,
+        uint256 fee
+    ) internal pure returns (uint256 amountOut) {
         uint256 amountInWithFee = amountIn * (10000 - fee);
 
         uint256 newReserveIn = reserveAmountIn * 10000 + amountInWithFee;
