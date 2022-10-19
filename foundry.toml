@@ -8,5 +8,7 @@ remappings = [
   "@solbase=lib/solbase/src/"
 ]
 
+gas_reports = ["Helios", "HeliosReference"]
+
 [profile.intense.fuzz]
 runs = 10000

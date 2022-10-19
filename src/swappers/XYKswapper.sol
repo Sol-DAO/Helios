@@ -38,7 +38,15 @@ contract XYKswapper is ReentrancyGuard {
         uint256 id,
         uint256 token0amount,
         uint256 token1amount
-    ) external nonReentrant returns (uint256 liq) {
+    )
+        external
+        nonReentrant
+        returns (
+            uint256 liq,
+            uint256 amount0,
+            uint256 amount1
+        )
+    {
         IHelios.Pair memory pair = IHelios(msg.sender).pairs(id);
 
         uint256 reserve0 = pair.reserve0;
@@ -49,8 +57,12 @@ contract XYKswapper is ReentrancyGuard {
 
         if (totalSupply == 0) {
             liq = (token0amount * token1amount).sqrt() - MIN_LP;
+            amount0 = token0amount;
+            amount1 = token1amount;
         } else {
             liq = min((token0amount * totalSupply) / reserve0, (token1amount * totalSupply) / reserve1);
+            amount0 = (reserve0 * liq) / totalSupply;
+            amount1 = (reserve1 * liq) / totalSupply;
         }
 
         require(liq != 0, "XYKswapper: INSUFFICIENT_LIQUIDITY_MINTED");

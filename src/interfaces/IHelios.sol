@@ -20,7 +20,13 @@ interface IHelios {
         uint256 id,
         uint256 token0amount,
         uint256 token1amount
-    ) external returns (uint256 liq);
+    )
+        external
+        returns (
+            uint256 liq,
+            uint256 amount0,
+            uint256 amount1
+        );
 
     function removeLiquidity(uint256 id, uint256 liq) external returns (uint256 amount0out, uint256 amount1out);
 

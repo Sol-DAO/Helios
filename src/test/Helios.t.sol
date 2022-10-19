@@ -76,6 +76,23 @@ contract HeliosTest is ERC1155TokenReceiver, Test {
         helios.createPair(address(this), token0, token1, 1_000 ether, 1_000 ether, xykSwapper, 1, "");
     }
 
+    function testAddLiquidity() public payable {
+        (uint256 id, uint256 c) = helios.createPair(
+            address(this),
+            token0,
+            token1,
+            1_000 ether,
+            1_000 ether,
+            xykSwapper,
+            1,
+            ""
+        );
+        uint256 b = helios.addLiquidity(address(this), id, 1_000 ether, 1_000 ether, "");
+        uint256 a = helios.addLiquidity(address(this), id, 1_000 ether, 1_000 ether, "");
+        require(a == b, "a!=b");
+        require(b == c, "b!=c");
+    }
+
     function testXYKpairSwap(uint256 amountIn) public payable {
         uint256 b0 = MockERC20(token0).balanceOf(address(this));
         vm.assume(amountIn > 100000 && amountIn < b0);

@@ -6,12 +6,19 @@ import {OwnedThreeStep} from "@solbase/auth/OwnedThreeStep.sol";
 import {SafeTransferLib} from "@solbase/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "@solbase/utils/FixedPointMathLib.sol";
 import {SafeMulticallable} from "@solbase/utils/SafeMulticallable.sol";
+import {ReentrancyGuard} from "@solbase/utils/ReentrancyGuard.sol";
 import {ERC1155, ERC1155TokenReceiver} from "@solbase/tokens/ERC1155.sol";
 
 /// @notice ERC1155 vault with router and liquidity pools.
 /// @dev Reference implementation (emphasizes clarity, deemphasizes gas cost)
 /// @author z0r0z.eth (SolDAO)
-contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC1155, ERC1155TokenReceiver {
+contract HeliosReference is
+    OwnedThreeStep(tx.origin),
+    ReentrancyGuard,
+    SafeMulticallable,
+    ERC1155,
+    ERC1155TokenReceiver
+{
     constructor() payable {} // Clean deployment.
 
     /// -----------------------------------------------------------------------
@@ -172,7 +179,7 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
         });
 
         // Swapper dictates output LP.
-        liq = swapper.addLiquidity(id, token0amount, token1amount);
+        (liq, , ) = swapper.addLiquidity(id, token0amount, token1amount);
 
         _mint(to, id, liq, data);
 
@@ -196,24 +203,27 @@ contract HeliosReference is OwnedThreeStep(tx.origin), SafeMulticallable, ERC115
         uint256 token0amount,
         uint256 token1amount,
         bytes calldata data
-    ) external payable returns (uint256 liq) {
+    ) external payable nonReentrant returns (uint256 liq) {
         require(id <= totalSupply, "Helios: PAIR_DOESNT_EXIST");
 
         Pair storage pair = pairs[id];
 
         // If base is address(0), assume native token and overwrite amount.
-        if (pair.token0 == address(0)) {
-            token0amount = msg.value;
+        if (pair.token0 == address(0)) token0amount = msg.value;
 
-            pair.token1.safeTransferFrom(msg.sender, address(this), token1amount);
+        // Swapper dictates output LP and adjustments to token amounts
+        (liq, token0amount, token1amount) = pair.swapper.addLiquidity(id, token0amount, token1amount);
+
+        // We know the exact amounts, now transfer and/or refund any ETH
+        if (pair.token0 == address(0)) {
+            if (msg.value > token0amount) {
+                (bool success, ) = payable(msg.sender).call{value: msg.value - token0amount}("");
+                require(success, "Helios: REFUND_FAILED");
+            }
         } else {
             pair.token0.safeTransferFrom(msg.sender, address(this), token0amount);
-
-            pair.token1.safeTransferFrom(msg.sender, address(this), token1amount);
         }
-
-        // Swapper dictates output LP.
-        liq = pair.swapper.addLiquidity(id, token0amount, token1amount);
+        pair.token1.safeTransferFrom(msg.sender, address(this), token1amount);
 
         require(liq != 0, "Helios: INSUFFICIENT_LIQUIDITY_MINTED");
 

@@ -21,6 +21,7 @@
       "test": "forge clean && forge test",
       "cov": "forge clean && forge coverage --report lcov && genhtml -o report lcov.info",
       "snapshot": "forge clean && forge snapshot",
+      "gas-report": "forge clean && forge test --gas-report",
       "lint": "prettier --print-width 120 --write src/**/*.sol && prettier --print-width 120 --write src/*.sol"
   }
 }
